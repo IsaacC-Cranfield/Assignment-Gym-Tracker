@@ -160,12 +160,24 @@ def create_progress_forecast_chart(target_reps=12):
             print("\n⚠️ Progress is flat or decreasing.")
     else:
         print("\nℹ️ Not enough data to forecast.")
-        
+
+# Favorite workout summary from all sheets
+def show_favorites():
+    workout_counter = Counter()
+    for sheet in wb.worksheets:
+        if sheet.title in workouts.values():  # Skip chart sheets
+            continue
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            workout_counter[row[3]] += 1
+    print("\n🔥 Most Logged Workouts:")
+    for workout, count in workout_counter.most_common(5):
+        print(f"{workout}: {count} times")
 
 # Run processes
 create_weekly_1rm_chart()
 create_progress_forecast_chart()
 wb.save(filename)
 print(f"\n✅ Workout saved to '{filename}' with per-workout tracking.")
+show_favorites()
 
 # Are you not entertained? Gladiator reference.
