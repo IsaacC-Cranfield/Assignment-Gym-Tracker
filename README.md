@@ -1,29 +1,27 @@
-# Assignment-Gym-Tracker
 from openpyxl import Workbook, load_workbook
 from openpyxl.chart import LineChart, Reference
+from openpyxl.chart.trendline import Trendline
+from collections import defaultdict, Counter
 from datetime import datetime
+import numpy as np
 import os
 
-# Define workouts by training day
+# Define workouts
 workouts = {
-    "Back & Biceps": ["Pull-ups", "Barbell Row", "Lat Pulldown", "Bicep Curl"],
-    "Chest & Triceps": ["Bench Press", "Incline Dumbbell Press", "Tricep Pushdown", "Dips"],
-    "Leg Day": ["Squats", "Leg Press", "Lunges", "Calf Raises"],
-    "Shoulders": ["Shoulder Press", "Lateral Raises", "Front Raises"]
+    "Back & Biceps": ["Pull-ups", "Chest Supported Row", "Lat Pulldown", "Preacher Bicep Curl", "Hammer Curls"],
+    "Chest & Triceps": ["Smith Machine Incline Press", "Incline Dumbbell Press", "Flat Bench Machine", "Tricep Pushdown", "Dips"],
+    "Leg Day": ["Squats", "Leg Press", "Leg Curls", "Quad Extensions", "Calf Raises"],
+    "Shoulders": ["Shoulder Press", "Lateral Raises", "Rear Delt Flyes"]
 }
 
-# Excel file name
-filename = "gym_progress.xlsx"
+filename = "gym_progress1.xlsx"
 
 # Load or create workbook
 if os.path.exists(filename):
     wb = load_workbook(filename)
-    ws = wb.active
 else:
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Progress"
-    ws.append(["Date", "Training Day", "Workout", "Weight (kg)"])  # Header
+    wb.remove(wb.active)  # Remove default sheet if new
 
 # Step 1: Select training day
 print("Select Training Day:")
@@ -41,53 +39,133 @@ for idx, workout in enumerate(selected_workouts):
 workout_choice = int(input("Enter your choice: ")) - 1
 selected_workout = selected_workouts[workout_choice]
 
-# Step 3: Enter weight used
-weight = float(input(f"Enter weight used for {selected_workout} (kg): "))
+# Step 3: Input sets
+num_sets = int(input(f"\nHow many sets for {selected_workout}? "))
+now = datetime.now()
+date_str = now.strftime("%Y-%m-%d %H:%M")
+week_number = now.strftime("%Y-W%U")
 
-# Step 4: Save to Excel
-date_now = datetime.now().strftime("%Y-%m-%d %H:%M")
-ws.append([date_now, selected_day, selected_workout, weight])
+# Use sheet named after the workout
+sheet_name = selected_workout
+if sheet_name not in wb.sheetnames:
+    ws = wb.create_sheet(title=sheet_name)
+    ws.append(["Date", "Week", "Training Day", "Workout", "Set #", "Weight (kg)", "Reps", "Volume", "1RM Estimate"])
+else:
+    ws = wb[sheet_name]
 
-# Step 5: Create a chart for the selected workout
-def create_chart():
-    # Find all rows with the selected workout
-    rows = list(ws.iter_rows(values_only=True))
-    headers = rows[0]
-    workout_data = [(r[0], r[3]) for r in rows[1:] if r[2] == selected_workout]
+for set_num in range(1, num_sets + 1):
+    weight = float(input(f"Enter weight for set {set_num} (kg): "))
+    reps = int(input(f"Enter reps for set {set_num}: "))
+    volume = weight * reps
+    one_rm = round(weight * (1 + reps / 30), 2)
+    ws.append([date_str, week_number, selected_day, selected_workout, set_num, weight, reps, volume, one_rm])
 
-    if len(workout_data) < 2:
-        print("Not enough data points to create a chart yet.")
-        return
+#creates 1 rep max chart
+def create_weekly_1rm_chart():
+    ws_data = wb[selected_workout]  # same sheet as workout data
 
-    # Write workout-specific data to a new sheet
-    if selected_workout not in wb.sheetnames:
-        ws_chart = wb.create_sheet(title=selected_workout)
-        ws_chart.append(["Date", "Weight (kg)"])
-    else:
-        ws_chart = wb[selected_workout]
+    # Find the starting row for writing the summary
+    start_row = ws_data.max_row + 3  # a few rows after the log
 
-    # Add only new entries
-    existing_dates = {row[0] for row in ws_chart.iter_rows(min_row=2, values_only=True)}
-    for date, weight_value in workout_data:
-        if date not in existing_dates:
-            ws_chart.append([date, weight_value])
+    # Create a dictionary of weekly 1RM estimates
+    weekly_1rms = defaultdict(list)
+    for row in ws_data.iter_rows(min_row=2, values_only=True):
+        _, week, _, _, _, _, _, _, one_rm = row
+        if one_rm:
+            weekly_1rms[week].append(one_rm)
 
-    # Create chart
+    # Write weekly averages below existing data
+    ws_data.cell(row=start_row, column=1, value="Week")
+    ws_data.cell(row=start_row, column=2, value="Avg 1RM Estimate")
+
+    for i, (week, values) in enumerate(sorted(weekly_1rms.items()), start=start_row + 1):
+        avg_rm = round(sum(values) / len(values), 2)
+        ws_data.cell(row=i, column=1, value=week)
+        ws_data.cell(row=i, column=2, value=avg_rm)
+
+    # Create the chart itself
     chart = LineChart()
-    chart.title = f"{selected_workout} Progress"
-    chart.y_axis.title = "Weight (kg)"
-    chart.x_axis.title = "Date"
+    chart.title = f"{selected_workout} – Weekly Avg 1RM Estimate"
+    chart.y_axis.title = "1RM (kg)"
+    chart.x_axis.title = "Week"
 
-    data = Reference(ws_chart, min_col=2, min_row=1, max_row=ws_chart.max_row)
-    categories = Reference(ws_chart, min_col=1, min_row=2, max_row=ws_chart.max_row)
+    data = Reference(ws_data, min_col=2, min_row=start_row, max_row=i)
+    categories = Reference(ws_data, min_col=1, min_row=start_row + 1, max_row=i)
     chart.add_data(data, titles_from_data=True)
     chart.set_categories(categories)
 
+    # Place the chart somewhere visually clear
+    chart_position = f"E{start_row}"
+    ws_data.add_chart(chart, chart_position)
+    
+# Forecasting
+def create_progress_forecast_chart(target_reps=12):
+    sheet_title = f"{selected_workout}_Progress"
+    if sheet_title not in wb.sheetnames:
+        ws_chart = wb.create_sheet(title=sheet_title)
+        ws_chart.append(["Week", "Max Weight × Reps"])
+    else:
+        ws_chart = wb[sheet_title]
+
+    weekly_progress = {}
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        week = row[1]
+        weight = row[5]
+        reps = row[6]
+
+        # ✅ Skip rows with missing data
+        if week is None or weight is None or reps is None:
+            continue
+
+        score = weight * reps
+        if week not in weekly_progress or score > weekly_progress[week]:
+            weekly_progress[week] = score
+
+    existing_weeks = {row[0] for row in ws_chart.iter_rows(min_row=2, values_only=True)}
+    for week, score in sorted(weekly_progress.items()):
+        if week not in existing_weeks:
+            ws_chart.append([week, round(score, 2)])
+
+    # Chart creation code continues...
+
+
+    # Create line chart
+    chart = LineChart()
+    chart.title = f"{selected_workout} – Weekly Progress"
+    chart.x_axis.title = "Week"
+    chart.y_axis.title = "Best Weight × Reps"
+    data = Reference(ws_chart, min_col=2, min_row=1, max_row=ws_chart.max_row)
+    cats = Reference(ws_chart, min_col=1, min_row=2, max_row=ws_chart.max_row)
+    chart.add_data(data, titles_from_data=True)
+    chart.set_categories(cats)
+    chart.series[0].trendline = Trendline(trendlineType='linear')
     ws_chart.add_chart(chart, "E2")
 
-# Generate chart
-create_chart()
+    # Estimate future milestone 1:1? ;)
+    weeks = []
+    values = []
+    for i, row in enumerate(ws_chart.iter_rows(min_row=2, values_only=True), start=1):
+        weeks.append(i)
+        values.append(row[1])
+    if len(weeks) >= 2:
+        x = np.array(weeks)
+        y = np.array(values)
+        a, b = np.polyfit(x, y, 1)
+        latest_weight = max(row[5] for row in ws.iter_rows(min_row=2, values_only=True))
+        target_volume = latest_weight * target_reps
+        if a > 0:
+            est_week = int((target_volume - b) / a)
+            print(f"\n📈 Estimated to hit {target_volume:.0f} (e.g., {latest_weight:.0f}kg × {target_reps} reps) around week {est_week}.")
+        else:
+            print("\n⚠️ Progress is flat or decreasing.")
+    else:
+        print("\nℹ️ Not enough data to forecast.")
+        
 
-# Save workbook
+# Run processes
+create_weekly_1rm_chart()
+create_progress_forecast_chart()
 wb.save(filename)
-print(f"\nWorkout logged and chart updated in '{filename}'.")
+print(f"\n✅ Workout saved to '{filename}' with per-workout tracking.")
+
+# Are you not entertained? Gladiator reference.
