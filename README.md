@@ -14,7 +14,7 @@ workouts = {
     "Shoulders": ["Shoulder Press", "Lateral Raises", "Rear Delt Flyes"]
 }
 
-filename = "gym_progress_tracker.xlsx"
+filename = "gym_trackerf.xlsx"
 
 # Load or create workbook
 if os.path.exists(filename):
