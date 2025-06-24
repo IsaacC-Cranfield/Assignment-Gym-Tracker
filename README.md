@@ -14,7 +14,7 @@ workouts = {
     "Shoulders": ["Shoulder Press", "Lateral Raises", "Rear Delt Flyes"]
 }
 
-filename = "gym_progress1.xlsx"
+filename = "gym_progress_tracker.xlsx"
 
 # Load or create workbook
 if os.path.exists(filename):
@@ -151,7 +151,7 @@ def create_progress_forecast_chart(target_reps=12):
         x = np.array(weeks)
         y = np.array(values)
         a, b = np.polyfit(x, y, 1)
-        latest_weight = max(row[5] for row in ws.iter_rows(min_row=2, values_only=True))
+        latest_weight = max((row[5] for row in ws.iter_rows(min_row=2, values_only=True) if row[5] is not None), default=0)
         target_volume = latest_weight * target_reps
         if a > 0:
             est_week = int((target_volume - b) / a)
@@ -168,7 +168,9 @@ def show_favorites():
         if sheet.title in workouts.values():  # Skip chart sheets
             continue
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            workout_counter[row[3]] += 1
+            # Ensure the row has at least 4 elements before accessing row[3]
+            if row and len(row) > 3 and row[3]:
+                workout_counter[row[3]] += 1
     print("\n🔥 Most Logged Workouts:")
     for workout, count in workout_counter.most_common(5):
         print(f"{workout}: {count} times")
@@ -181,3 +183,4 @@ print(f"\n✅ Workout saved to '{filename}' with per-workout tracking.")
 show_favorites()
 
 # Are you not entertained? Gladiator reference.
+
